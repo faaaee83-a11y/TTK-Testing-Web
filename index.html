@@ -66,12 +66,19 @@ button.on{background:#e8472b;border-color:#e8472b}
 <script>
 const $=id=>document.getElementById(id),R=Math.random,clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),now=()=>performance.now()/1000;
 const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,200);cam.rotation.order='YXZ';scene.add(cam);
-const ren=new THREE.WebGLRenderer({antialias:true});ren.setPixelRatio(Math.min(devicePixelRatio,2));ren.setSize(innerWidth,innerHeight);document.body.prepend(ren.domElement);
+const ren=new THREE.WebGLRenderer({antialias:true});ren.setPixelRatio(Math.min(devicePixelRatio,2));ren.setSize(innerWidth,innerHeight);document.body.prepend(ren.domElement);ren.shadowMap.enabled=true;ren.shadowMap.type=THREE.PCFSoftShadowMap;ren.toneMapping=THREE.ACESFilmicToneMapping;ren.toneMappingExposure=1.25;
 const hemi=new THREE.HemisphereLight(0xffffff,0x555555,.9);scene.add(hemi);
-const sun=new THREE.DirectionalLight(0xffffff,.45);sun.position.set(20,40,10);scene.add(sun);
-const floorMat=new THREE.MeshLambertMaterial({color:0x555555}),floor=new THREE.Mesh(new THREE.PlaneGeometry(90,90),floorMat);floor.rotation.x=-Math.PI/2;scene.add(floor);
+const sun=new THREE.DirectionalLight(0xffffff,.45);sun.position.set(20,40,10);scene.add(sun);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-50,right:50,top:50,bottom:-50,near:1,far:120});sun.shadow.bias=-.0005;
+const floorMat=new THREE.MeshLambertMaterial({color:0x555555}),floor=new THREE.Mesh(new THREE.PlaneGeometry(90,90),floorMat);floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
 let walls=[],wallMeshes=[],mapObjs=[],baseHemi=.9,fogFar=60,s=1;const rnd=()=>(s=s*16807%2147483647)/2147483647;
-function wall(x,z,w,d,h,c){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:c}));m.position.set(x,h/2,z);scene.add(m);mapObjs.push(m);wallMeshes.push(m);walls.push({x,z,w,d})}
+function ctex(f){const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');f(x);const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=4;return t}
+function sp(x,n,a){for(let i=0;i<n;i++){x.fillStyle=R()<.6?`rgba(0,0,0,${R()*a})`:`rgba(255,255,255,${R()*a})`;x.fillRect(R()*128,R()*128,1+R()*2,1+R()*2)}}
+const fillc=(x,c)=>{x.fillStyle=c;x.fillRect(0,0,128,128)};
+const TX={conc:ctex(x=>{fillc(x,'#bbb');sp(x,1500,.25)}),tile:ctex(x=>{fillc(x,'#c4c4c4');sp(x,800,.15);x.strokeStyle='#666';x.lineWidth=4;x.strokeRect(0,0,128,128)}),
+brick:ctex(x=>{fillc(x,'#9a9086');for(let r=0;r<8;r++)for(let c=-1;c<4;c++){const v=190+R()*50|0;x.fillStyle=`rgb(${v},${v-30},${v-60})`;x.fillRect(c*32+(r%2)*16+1,r*16+1,30,14)}sp(x,600,.15)}),
+rib:ctex(x=>{fillc(x,'#ccc');for(let i=0;i<128;i+=8){x.fillStyle='#8886';x.fillRect(i,0,4,128)}sp(x,900,.2)}),grav:ctex(x=>{fillc(x,'#999');sp(x,4000,.5)}),sand:ctex(x=>{fillc(x,'#d8c9a0');sp(x,3000,.3)})};
+let WT=null;function tx(t,a,b){const q=t.clone();q.needsUpdate=true;q.repeat.set(a,b);return q}
+function wall(x,z,w,d,h,c){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:c,map:WT?tx(WT,Math.max(w,d)/3,h/3):null}));m.castShadow=m.receiveShadow=true;m.position.set(x,h/2,z);scene.add(m);mapObjs.push(m);wallMeshes.push(m);walls.push({x,z,w,d})}
 function seg(v,f,a,b,h=4,c=0x8d8f93){const L=b-a,m=(a+b)/2;v?wall(f,m,1,L,h,c):wall(m,f,L,1,h,c)}
 function line(v,f,a,b,gaps,h,c){let p=a;gaps.slice().sort((x,y)=>x-y).forEach(g=>{if(g-1.75>p)seg(v,f,p,g-1.75,h,c);p=g+1.75});if(b>p)seg(v,f,p,b,h,c)}
 const perim=c=>{seg(1,-40,-40,40,4.5,c);seg(1,40,-40,40,4.5,c);seg(0,-40,-40,40,4.5,c);seg(0,40,-40,40,4.5,c)};
@@ -84,9 +91,14 @@ const MAPS=[
  for(let i=0;i<16;i++){const x=(rnd()-.5)*70,z=(rnd()-.5)*70,w=i%2?6:2.5,d=i%2?2.5:6;if(Math.abs(x)<14&&Math.abs(z)<14)continue;if(this.zones.some(q=>Math.hypot(q[0]-x,q[1]-z)<9))continue;wall(x,z,w,d,2.4,[0x3f6b8c,0x8c5a3f,0x4d7a4d][i%3])}}},
 {n:'Compound',bg:0xc9b58a,fog:[12,80],hemi:1,floor:0xb39c6b,zones:[[12,12],[-12,-12],[0,-30]],build(){perim(0x9c8a63);const c=0xb8a57a;line(0,-24,-24,24,[-12,12],3,c);line(0,24,-24,24,[0,16],3,c);line(1,-24,-24,24,[0,14],3,c);line(1,24,-24,24,[-14,8],3,c);
  [[-31,-31],[31,31],[-31,31],[31,-31]].forEach(p=>wall(p[0],p[1],9,9,4,0x8a7a58));wall(0,0,4,4,1.3,0x6b6b6b);[[-12,10],[10,-12],[14,6],[-8,-18]].forEach(p=>wall(p[0],p[1],2.4,2.4,1.5,0x6b5f3f))}}];
-function buildMap(i){const m=MAPS[i];mapObjs.forEach(o=>scene.remove(o));mapObjs=[];walls=[];wallMeshes=[];s=11+i;m.build();
- floorMat.color.setHex(m.floor);scene.background=new THREE.Color(m.bg);scene.fog=new THREE.Fog(m.bg,m.fog[0],m.fog[1]);baseHemi=m.hemi;fogFar=m.fog[1];
+function buildMap(i){const m=MAPS[i];mapObjs.forEach(o=>scene.remove(o));mapObjs=[];walls=[];wallMeshes=[];s=11+i;WT=[TX.conc,TX.rib,TX.brick][i];m.build();WT=null;props(i);
+ floorMat.color.setHex(m.floor);floorMat.map=tx([TX.tile,TX.grav,TX.sand][i],30,30);floorMat.needsUpdate=true;scene.background=new THREE.Color(m.bg);scene.fog=new THREE.Fog(m.bg,m.fog[0],m.fog[1]);baseHemi=m.hemi;fogFar=m.fog[1];
  if(m.ceil){const c=new THREE.Mesh(new THREE.PlaneGeometry(90,90),new THREE.MeshLambertMaterial({color:0x2a2d31,side:THREE.DoubleSide}));c.rotation.x=Math.PI/2;c.position.y=4.5;scene.add(c);mapObjs.push(c)}}
+function barrel(x,z,c){const m=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,1,14),new THREE.MeshPhongMaterial({color:c,shininess:50}));m.position.set(x,.5,z);m.castShadow=m.receiveShadow=true;scene.add(m);mapObjs.push(m);wallMeshes.push(m);walls.push({x,z,w:.7,d:.7})}
+function props(i){const n=i==0?8:14;for(let k=0;k<n;k++){const x=(rnd()-.5)*70,z=(rnd()-.5)*70,t=rnd();if(hit2d(x,z,1.6)||MAPS[i].zones.some(q=>Math.hypot(q[0]-x,q[1]-z)<4))continue;
+ if(i==0)wall(x,z,1.8,.8,.78,0x6a5a48);else if(t<.5)barrel(x,z,[0x3c5a7a,0x8a3a2a,0x4a5a3a][k%3]);else wall(x,z,1.2,1.2,1.1,0x9a7a52)}
+ if(i==0){for(let a=-30;a<=30;a+=10)for(let b=-30;b<=30;b+=20){const l=new THREE.Mesh(new THREE.BoxGeometry(1.6,.06,.45),new THREE.MeshBasicMaterial({color:0xeaf4ff}));l.position.set(a,4.4,b);scene.add(l);mapObjs.push(l)}
+  [[-20,-20],[20,20],[-20,20],[20,-20]].forEach(p=>{const L=new THREE.PointLight(0xdfeaff,.7,28);L.position.set(p[0],3.8,p[1]);scene.add(L);mapObjs.push(L)})}}
 // audio(左右パン+距離減衰)
 let ac;function snd(f,d,t='square',v=.05,pan=0){if(!ac)return;const o=ac.createOscillator(),g=ac.createGain();o.type=t;o.frequency.value=f;o.frequency.exponentialRampToValueAtTime(40,ac.currentTime+d);g.gain.value=v;g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);o.connect(g);let n=g;if(pan&&ac.createStereoPanner){const p=ac.createStereoPanner();p.pan.value=pan;g.connect(p);n=p}n.connect(ac.destination);o.start();o.stop(ac.currentTime+d)}
 function snd3(f,d,t,v,x,z){const dx=x-P.x,dz=z-P.z,di=Math.hypot(dx,dz)||1,vol=v*clamp(1.2-di/45,0,1);if(vol<.002)return;snd(f,d,t,vol,clamp((dx*Math.cos(P.yaw)-dz*Math.sin(P.yaw))/di,-1,1))}
@@ -103,7 +115,14 @@ let sens=1,fovB=75;$('sens').oninput=e=>sens=+e.target.value;$('fov').oninput=e=
 const P={x:0,z:0,y:0,vy:0,st:0,yaw:0,pitch:0,hp:100,eye:1.65,crouch:0,lean:0,w:0,next:0,relEnd:0,dead:0,alive:1,team:0,id:'あなた',kills:0,deaths:0,ttks:[]};
 let bots=[],botMeshes=[],mode=0,mapI=0,cfg={map:0,mode:0},built=0;
 let light=0,laser=0,nv=0,hc=0,bc=1,zoomI=0,burst=0,bob=0,sc=[0,0],zi=0,zt=0,tick=0,over=0,flT=0;
-const gun=new THREE.Mesh(new THREE.BoxGeometry(.07,.09,.45),new THREE.MeshLambertMaterial({color:0x222222}));cam.add(gun);
+const MC={m:0x1a1a1c,p:0x2a2b2d,g:0x4a5240,l:0x3a6a9a},gun=new THREE.Group(),GW=[];cam.add(gun);
+const RH=[['b',.075,.08,.1,0,-.09,.06,'g'],['b',.065,.065,.4,.02,-.13,.3,'g'],['b',.075,.07,.1,0,-.05,-.3,'g'],['b',.065,.065,.4,-.05,-.1,-.1,'g']];
+const GD=[
+[['b',.06,.085,.26,0,0,-.02,'m'],['b',.055,.055,.3,0,0,-.3,'p'],['c',.011,.22,0,0,.005,-.56,'m'],['c',.017,.08,0,0,.005,-.68,'m'],['b',.045,.09,.17,0,-.02,.2,'p'],['b',.035,.1,.045,0,-.085,.06,'p'],['b',.04,.15,.07,0,-.11,-.07,'p'],['b',.03,.012,.55,0,.047,-.2,'m'],['b',.05,.06,.1,0,.08,-.12,'p'],['b',.04,.04,.004,0,.085,-.17,'l'],...RH],
+[['b',.06,.08,.22,0,0,0,'m'],['b',.05,.05,.15,0,0,-.2,'p'],['c',.012,.14,0,0,.005,-.33,'m'],['b',.04,.1,.1,0,-.01,.15,'p'],['b',.035,.1,.045,0,-.08,.05,'p'],['b',.035,.17,.05,0,-.13,-.04,'p'],['b',.03,.012,.3,0,.047,-.08,'m'],['b',.05,.05,.07,0,.075,-.1,'p'],...RH],
+[['b',.034,.045,.17,0,.02,-.1,'m'],['b',.03,.03,.15,0,-.01,-.07,'p'],['b',.032,.1,.05,0,-.065,-.01,'p'],['c',.008,.03,0,0,.02,-.2,'m'],['b',.008,.012,.01,0,.048,-.17,'m'],['b',.07,.08,.09,0,-.08,0,'g'],['b',.065,.065,.35,.02,-.1,.22,'g'],['b',.06,.06,.08,-.04,-.09,-.03,'g'],['b',.06,.06,.3,-.07,-.12,.15,'g']],
+[['b',.06,.09,.22,0,0,0,'m'],['c',.014,.6,0,0,.012,-.4,'m'],['c',.013,.45,0,0,-.03,-.36,'m'],['b',.06,.055,.16,0,-.035,-.28,'p'],['b',.045,.1,.25,0,-.02,.2,'p'],['b',.035,.09,.045,0,-.08,.04,'p'],['b',.01,.015,.01,0,.035,-.7,'m'],['b',.075,.08,.1,0,-.09,.05,'g'],['b',.065,.065,.4,.02,-.13,.3,'g'],['b',.075,.07,.12,0,-.04,-.28,'g'],['b',.065,.065,.4,-.05,-.08,-.08,'g']]];
+GD.forEach(a=>{const g=new THREE.Group();a.forEach(([k,w,h,d,x,y,z,c])=>{const m=new THREE.Mesh(k=='c'?new THREE.CylinderGeometry(w,w,h,10).rotateX(Math.PI/2):new THREE.BoxGeometry(w,h,d),new THREE.MeshPhongMaterial({color:MC[c],shininess:c=='g'?5:70}));m.position.set(x,y,z);g.add(m)});g.visible=false;gun.add(g);GW.push(g)});
 const fl=new THREE.Mesh(new THREE.SphereGeometry(.06,6,4),new THREE.MeshBasicMaterial({color:0xffd060}));fl.position.z=-.3;fl.visible=false;gun.add(fl);
 const spot=new THREE.SpotLight(0xfff2d0,0,45,.4,.4,1);spot.position.set(.1,-.1,0);spot.target.position.set(0,0,-5);cam.add(spot,spot.target);
 const dot=new THREE.Mesh(new THREE.SphereGeometry(.035,8,6),new THREE.MeshBasicMaterial({color:0xff2020}));dot.visible=false;scene.add(dot);
@@ -112,16 +131,18 @@ const zone=()=>MAPS[mapI].zones[zi];
 const sG=new THREE.BoxGeometry(.06,.06,.06),sM=new THREE.MeshBasicMaterial({color:0xffd060});
 function spark(p){const m=new THREE.Mesh(sG,sM);m.position.copy(p);scene.add(m);setTimeout(()=>scene.remove(m),150)}
 // bots
-const mRed=new THREE.MeshLambertMaterial({color:0x7a3b3b}),mBlue=new THREE.MeshLambertMaterial({color:0x3b5f7a}),mHead=new THREE.MeshLambertMaterial({color:0xd9b38c});
+const mRed=new THREE.MeshLambertMaterial({color:0x7a3b3b}),mBlue=new THREE.MeshLambertMaterial({color:0x3b5f7a}),mHead=new THREE.MeshLambertMaterial({color:0xd9b38c}),mDark=new THREE.MeshLambertMaterial({color:0x17181a}),mVest=new THREE.MeshLambertMaterial({color:0x2b2f2a}),mPant=new THREE.MeshLambertMaterial({color:0x35382f}),mHelm=new THREE.MeshLambertMaterial({color:0x3a4033});
 function mkBots(){bots.forEach(b=>scene.remove(b.g));bots=[];botMeshes=[];(mode==1?[0,0,1,1,1]:[1,2,3,4,5]).forEach((t,i)=>mkBot(t,i+1))}
 function mkBot(team,n){const g=new THREE.Group(),b={g,hp:100,alive:1,x:0,z:0,cd:0,see:0,first:0,lh:0,tx:0,tz:0,wait:0,resp:0,team,sd:1,st:0,kills:0,deaths:0,id:(team==0?'味方':'BOT')+n,tgt:null},m=team==0?mBlue:mRed;
- const body=new THREE.Mesh(new THREE.BoxGeometry(.6,1.05,.35),m);body.position.y=.95;const legs=new THREE.Mesh(new THREE.BoxGeometry(.5,.45,.3),m);legs.position.y=.22;
- const head=new THREE.Mesh(new THREE.SphereGeometry(.17,12,8),mHead);head.position.y=1.62;
- body.userData={bot:b,part:'body'};legs.userData={bot:b,part:'body'};head.userData={bot:b,part:'head'};
- g.add(body,legs,head);scene.add(g);botMeshes.push(body,legs,head);bots.push(b);respawn(b)}
+ const Q=(w,h,d,x,y,z,mat,part,par=g)=>{const q=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);q.position.set(x,y,z);q.castShadow=true;q.userData={bot:b,part};par.add(q);botMeshes.push(q);return q};
+ b.lg=[0,1].map(i=>{const pv=new THREE.Group();pv.position.set(i?.11:-.11,.9,0);g.add(pv);Q(.16,.86,.2,0,-.43,0,mPant,'body',pv);Q(.18,.12,.28,0,-.86,.04,mDark,'body',pv);return pv});
+ Q(.46,.5,.26,0,1.2,0,m,'body');Q(.5,.4,.3,0,1.22,0,mVest,'body');Q(.1,.12,.06,-.12,1.1,.17,mDark,'body');Q(.1,.12,.06,.12,1.1,.17,mDark,'body');Q(.08,.08,.08,0,1.52,0,mHead,'body');
+ Q(.09,.09,.45,.17,1.3,.22,m,'body').rotation.y=-.35;Q(.09,.09,.55,-.14,1.28,.3,m,'body').rotation.y=.3;Q(.06,.09,.75,0,1.27,.4,mDark,'body');Q(.05,.05,.12,0,1.34,.35,mDark,'body');
+ const hd=new THREE.Mesh(new THREE.SphereGeometry(.12,14,10),mHead),hm=new THREE.Mesh(new THREE.SphereGeometry(.145,14,10,0,Math.PI*2,0,Math.PI*.6),mHelm);hd.position.y=1.65;hm.position.y=1.67;hd.castShadow=hm.castShadow=true;
+ hd.userData=hm.userData={bot:b,part:'head'};g.add(hd,hm);botMeshes.push(hd,hm);Q(.2,.05,.05,0,1.66,.11,mDark,'head');bots.push(b);respawn(b)}
 function respawn(b){let p=spawn();if(mode==2){const a=R()*6.28,r=6+R()*18,x=P.x+Math.sin(a)*r,z=P.z+Math.cos(a)*r;if(Math.abs(x)<38&&Math.abs(z)<38&&!hit2d(x,z,1))p={x,z}}b.x=p.x;b.z=p.z;b.hp=100;b.alive=1;b.first=0;b.see=0;b.g.visible=true;b.g.position.set(b.x,0,b.z);newTgt(b)}
 function newTgt(b){b.wait=0;if(mode==1){const z=zone();for(let i=0;i<8;i++){const x=z[0]+(R()-.5)*10,y=z[1]+(R()-.5)*10;if(!hit2d(x,y,.6)){b.tx=x;b.tz=y;return}}}const p=spawn();b.tx=p.x;b.tz=p.z}
-function step(b,dt){b.st+=dt;if(b.st>.45){b.st=0;snd3(70,.05,'triangle',.05,b.x,b.z)}}
+function step(b,dt){b.ph=(b.ph||0)+dt*7;b.lg[0].rotation.x=Math.sin(b.ph)*.6;b.lg[1].rotation.x=-Math.sin(b.ph)*.6;b.st+=dt;if(b.st>.45){b.st=0;snd3(70,.05,'triangle',.05,b.x,b.z)}}
 // helpers
 const ray=new THREE.Raycaster(),V=new THREE.Vector3();
 function los(ax,ay,az,bx,by,bz){V.set(bx-ax,by-ay,bz-az);const d=V.length();ray.set(new THREE.Vector3(ax,ay,az),V.normalize());ray.far=d;return ray.intersectObjects(wallMeshes).length==0}
@@ -220,7 +241,7 @@ function frame(){requestAnimationFrame(frame);const t=now(),dt=Math.min(t-last,.
  // camera / attachments
  bob+=dt*(moving&&P.y==0?(P.crouch?6:9):0);const bm=(bc?1.6:1)*(moving?1:0);
  const bf=fovB+(hc?17:0),zf=[48,34,24][zoomI];
- gun.scale.z=GS[P.w];if(fl.visible&&t>flT)fl.visible=false;
+ GW.forEach((g,i)=>g.visible=i==P.w);fl.position.z=-[.74,.42,.24,.72][P.w];if(fl.visible&&t>flT)fl.visible=false;
  gun.position.x+=((aim?0:.18)-gun.position.x)*Math.min(1,dt*14);gun.position.y+=((aim?-.1:hc?-.24:-.17)-gun.position.y)*Math.min(1,dt*14);gun.position.z+=(-.42-gun.position.z)*Math.min(1,dt*18);
  cam.fov+=((aim?zf:bf)-cam.fov)*Math.min(1,dt*14);cam.updateProjectionMatrix();
  const rx=Math.cos(P.yaw),rz=-Math.sin(P.yaw);
